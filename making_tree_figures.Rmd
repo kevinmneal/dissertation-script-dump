@@ -1,0 +1,100 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+setwd("G:/My Drive/Illumina Sequencing Data/20181212_rangewide/gitprojects/speaphylospatial/")
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+#BiocManager::install("ggtree")
+#library(ggtree)
+```
+
+```{r}
+#sp188 <- read.iqtree("G:/My Drive/Illumina Sequencing Data/20181212_rangewide/gitprojects/speaphylospatial/sphaspinphylo188_50pctmsng_SNPs_perspt2_nstop500_consensustree_50pctconsensus2.contree")
+sp188 <- read.newick("G:/My Drive/Illumina Sequencing Data/20181212_rangewide/gitprojects/speaphylospatial/sphaspinphylo188_50pctconcensus_cladogram.nex")
+
+```
+
+```{r}
+# convert to a tibble, then use full_join by label to add group info!!! Then convert back to phylo
+sp188.tib <- as_tibble(sp188)
+sp188.tib
+
+sp188.sampleinfo <- read.csv("G:/My Drive/Illumina Sequencing Data/20181212_rangewide/gitprojects/speaphylospatial/sphaspinphylo188spatial.poplabels.csv", header=T, stringsAsFactors = F)
+#head(sp188.sampleinfo)
+sp188.tib2 <- full_join(sp188.tib, sp188.sampleinfo, by=c("label"="Ind"))
+sp188.tib2
+
+sp188 <- as.treedata(sp188.tib2)
+
+```
+
+
+```{r}
+# can't figure out how to get the tip label angle right...
+#angle <- seq(0, 360, 360/188)
+
+# change tip labels to sample ID - the join adds info for each node so need to truncate to appropriate values, same length as number of tips
+sp188@phylo$tip.label <- sp188@data$pop[1:length(sp188@phylo$tip.label)]
+ggt <- ggtree(sp188, branch.length = "none", layout="circular") +
+  geom_tiplab2()#label=sp188@data$SampleID[1:188]) # geom_tiplab2() gets the angles right for circular layout. equivalent to geom_tiplab(aes(subset=(abs(angle) < 90), angle=angle)) + geom_tiplab(aes(subset=(abs(angle) >= 90), angle=angle+180), hjust=1) and pulls from the @phylo$tip.label attribute so these need to be the tip labels you want to use
+
+# symbology for node support, outer bands for pond and clade membership
+ggt + geom_nodelab()#x=branch, label=support)
+```
+```{r fig.height=10, fig.width=7}
+# symbology for node support, outer bands for pond and clade membership
+# first print with nodes labeled by their number so I know where to apply the clade labels
+#ggt + geom_label(aes(label=node))
+#ggsave()
+
+library(purrr) # enables discard function to easily strip NA values from a vector. Or can use na.omit()
+#get clade nodes by using MRCA, or just by looking at the node number
+SPINnode <- ggtree::MRCA(ggt, ggt$data$node[ggt$data$Species=="SPIN"] %>% discard(is.na)) # 348
+SPHANnode <- ggtree::MRCA(ggt, c("HBS131283", "HBS38680")) #ggt$data$node[ggt$data$Species=="SPHAN"] %>% discard(is.na)) # 273
+#SPHANnode <- ggtree::MRCA(ggt, c("LAZYK", "GUAD2")) #ggt$data$node[ggt$data$Species=="SPHAN"] %>% discard(is.na)) 
+SPHASnode <- ggtree::MRCA(ggt, c("UABC1148", "HBS131718"))  #ggt$data$node[ggt$data$Species=="SPHAS"] %>% discard(is.na)) # 191
+#SPHASnode <- ggtree::MRCA(ggt, c("ARROYO", "CAST"))  #ggt$data$node[ggt$data$Species=="SPHAS"] %>% discard(is.na))
+groupnodes = c(SPIN=348, SPHA_NORTH=273, SPHA_SOUTH=191)
+
+cols = c(SPIN="green2", SPHA_NORTH="blue2", SPHA_SOUTH="red2")
+ggtgroup <- groupClade(ggt, groupnodes)
+ggtree(ggtgroup, aes(color=group), layout="circular") + geom_tiplab2() + scale_color_manual(values=c(cols, "black"), name="Clade", breaks=c("SPIN", "SPHA_NORTH", "SPHA_SOUTH"), na.value="black") + geom_nodelab2() + theme(legend.position="right")
+
+#ggtree(ggt, aes(color=group))
+
+# grp = list(
+#   SPIN=which(ggt$data$Species == "SPIN"),
+#   SPHA.NORTH=which(ggt$data$Species == "SPHAN"),
+#   SPHA.SOUTH=which(ggt$data$Species == "SPHAS")
+# )
+#ggt + aes(color=County) + theme(legend.position="right")
+#groupOTU(ggt, grp, 'Species') + aes(color=Species) +
+#groupClade(ggt, grp, 'Species') + aes(color=Species) +
+#  theme(legend.position="right")
+
+```
+```{r}
+data(iris)
+rn <- paste0(iris[,5], "_", 1:150)
+rownames(iris) <- rn
+d_iris <- dist(iris[,-5], method="man")
+
+tree_iris <- ape::bionj(d_iris)
+grp <- list(setosa     = rn[1:50],
+            versicolor = rn[51:100],
+            virginica  = rn[101:150])
+
+p_iris <- ggtree(tree_iris, layout = 'circular', branch.length='none')
+groupOTU(p_iris, grp, 'Species') + aes(color=Species) +
+  theme(legend.position="right")
+```
+
+
